@@ -348,6 +348,9 @@ type Config struct {
 
 	// Invited is a list of people invited to a session.
 	Invited []string
+
+	// ExtraProxyHeaders is a collection of http headers to be included in requests to the WebProxy.
+	ExtraProxyHeaders map[string]string
 }
 
 // CachePolicy defines cache policy for local clients
@@ -2544,12 +2547,13 @@ func (tc *TeleportClient) Ping(ctx context.Context) (*webclient.PingResponse, er
 	if tc.lastPing != nil {
 		return tc.lastPing, nil
 	}
-	pr, err := webclient.Ping(
-		ctx,
-		tc.WebProxyAddr,
-		tc.InsecureSkipVerify,
-		loopbackPool(tc.WebProxyAddr),
-		tc.AuthConnector)
+	pr, err := webclient.Ping(&webclient.Config{
+		Context:       ctx,
+		ProxyAddr:     tc.WebProxyAddr,
+		Insecure:      tc.InsecureSkipVerify,
+		Pool:          loopbackPool(tc.WebProxyAddr),
+		ConnectorName: tc.AuthConnector,
+		ExtraHeaders:  tc.ExtraProxyHeaders})
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -2581,10 +2585,13 @@ func (tc *TeleportClient) Ping(ctx context.Context) (*webclient.PingResponse, er
 // confirmation from the user.
 func (tc *TeleportClient) ShowMOTD(ctx context.Context) error {
 	motd, err := webclient.GetMOTD(
-		ctx,
-		tc.WebProxyAddr,
-		tc.InsecureSkipVerify,
-		loopbackPool(tc.WebProxyAddr))
+		&webclient.Config{
+			Context:      ctx,
+			ProxyAddr:    tc.WebProxyAddr,
+			Insecure:     tc.InsecureSkipVerify,
+			Pool:         loopbackPool(tc.WebProxyAddr),
+			ExtraHeaders: tc.ExtraProxyHeaders})
+
 	if err != nil {
 		return trace.Wrap(err)
 	}
