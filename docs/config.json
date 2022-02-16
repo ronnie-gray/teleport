@@ -163,6 +163,10 @@
             {
               "title": "Joining Nodes in AWS",
               "slug": "/setup/guides/joining-nodes-aws/"
+            },
+            {
+              "title": "Using Teleport's CA with GitHub",
+              "slug": "/setup/guides/ssh-key-extensions/"
             }
           ]
         },
