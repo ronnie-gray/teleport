@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/defaults"
@@ -35,8 +34,6 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 // newSelfSignedCA creates a new CA for testing.
@@ -166,18 +163,23 @@ func TestServerTLS(t *testing.T) {
 		})
 		require.NoError(t, err)
 		go server.Serve()
-		t.Cleanup(func() { server.Close() })
 
-		creds := newProxyCredentials(credentials.NewTLS(tc.client))
-		conn, err := grpc.Dial(listener.Addr().String(), grpc.WithTransportCredentials(creds))
+		client, err := NewClient(ClientConfig{
+			AccessCache: &mockAccessCache{},
+			TLSConfig:   tc.client,
+		})
 		require.NoError(t, err)
 
-		func() {
-			defer conn.Close()
+		t.Cleanup(func() {
+			server.Close()
+			client.Close()
+		})
 
-			client := proto.NewProxyServiceClient(conn)
-			_, err = client.DialNode(context.Background())
-			tc.assertErr(t, err, tc.desc)
-		}()
+		_, _, err = client.dial(context.TODO(), listener.Addr().String())
+		if tc.expectErr {
+			require.Error(t, err, tc.desc)
+		} else {
+			require.NoError(t, err, tc.desc)
+		}
 	}
 }
