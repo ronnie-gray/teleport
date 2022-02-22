@@ -16,84 +16,12 @@ package proxy
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"net"
 	"testing"
-	"time"
 
 	"github.com/gravitational/teleport/api/types"
-	"github.com/gravitational/teleport/lib/auth"
-	"github.com/gravitational/teleport/lib/defaults"
-	"github.com/gravitational/teleport/lib/fixtures"
-	"github.com/gravitational/teleport/lib/tlsca"
-	"github.com/jonboulle/clockwork"
+
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/ssh"
 )
-
-// newSelfSignedCA creates a new CA for testing.
-func newSelfSignedCA(t *testing.T) (*tlsca.CertAuthority, error) {
-	rsaKey, err := ssh.ParseRawPrivateKey(fixtures.PEMBytes["rsa"])
-	require.NoError(t, err)
-
-	cert, err := tlsca.GenerateSelfSignedCAWithSigner(
-		rsaKey.(*rsa.PrivateKey), pkix.Name{}, nil, defaults.CATTL,
-	)
-	require.NoError(t, err)
-
-	ca, err := tlsca.FromCertAndSigner(cert, rsaKey.(*rsa.PrivateKey))
-	require.NoError(t, err)
-
-	return ca, nil
-}
-
-// certFromIdentity creates a tls config for a given CA and identity.
-func certFromIdentity(t *testing.T, ca *tlsca.CertAuthority, ident tlsca.Identity) *tls.Config {
-	if ident.Username == "" {
-		ident.Username = "test-user"
-	}
-
-	subj, err := ident.Subject()
-	require.NoError(t, err)
-
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	clock := clockwork.NewRealClock()
-
-	request := tlsca.CertificateRequest{
-		Clock:     clock,
-		PublicKey: privateKey.Public(),
-		Subject:   subj,
-		NotAfter:  clock.Now().UTC().Add(time.Minute),
-		DNSNames:  []string{"127.0.0.1"},
-	}
-	certBytes, err := ca.GenerateCertificate(request)
-	require.NoError(t, err)
-
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
-	cert, err := tls.X509KeyPair(certBytes, keyPEM)
-	require.NoError(t, err)
-
-	pool := x509.NewCertPool()
-	pool.AddCert(ca.Cert)
-
-	config := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      pool,
-	}
-
-	return config
-}
-
-type mockAccessCache struct {
-	auth.AccessCache
-}
 
 // TestServerTLS ensures that only trusted certificates with the proxy role
 // are accepted by the server.
@@ -104,82 +32,27 @@ func TestServerTLS(t *testing.T) {
 	ca2, err := newSelfSignedCA(t)
 	require.NoError(t, err)
 
-	tests := []struct {
-		desc      string
-		server    *tls.Config
-		client    *tls.Config
-		assertErr require.ErrorAssertionFunc
-	}{
-		{
-			desc: "trusted certificates with proxy roles",
-			server: certFromIdentity(t, ca1, tlsca.Identity{
-				Groups: []string{string(types.RoleProxy)},
-			}),
-			client: certFromIdentity(t, ca1, tlsca.Identity{
-				Groups: []string{string(types.RoleProxy)},
-			}),
-			assertErr: require.NoError,
-		},
-		{
-			desc: "trusted certificates with incorrect server role",
-			server: certFromIdentity(t, ca1, tlsca.Identity{
-				Groups: []string{string(types.RoleAdmin)},
-			}),
-			client: certFromIdentity(t, ca1, tlsca.Identity{
-				Groups: []string{string(types.RoleProxy)},
-			}),
-			assertErr: require.Error,
-		},
-		{
-			desc: "certificates with correct role from different CAs",
-			server: certFromIdentity(t, ca1, tlsca.Identity{
-				Groups: []string{string(types.RoleProxy)},
-			}),
-			client: certFromIdentity(t, ca2, tlsca.Identity{
-				Groups: []string{string(types.RoleProxy)},
-			}),
-			assertErr: require.Error,
-		},
-	}
+	// trusted certificates with proxy roles.
+	client1, _ := setupClient(t, ca1, ca1, types.RoleProxy)
+	server1, _ := setupServer(t, ca1, ca1, types.RoleProxy)
+	stream, _, err := client1.dial(context.TODO(), server1.config.Listener.Addr().String())
+	require.NoError(t, err)
+	require.NotNil(t, stream)
+	require.NoError(t, sendMsg(stream))
+	stream.CloseSend()
 
-	for _, tc := range tests {
-		listener, err := net.Listen("tcp", "localhost:0")
-		require.NoError(t, err)
+	// trusted certificates with incorrect server role.
+	client2, _ := setupClient(t, ca1, ca1, types.RoleAdmin)
+	server2, _ := setupServer(t, ca1, ca1, types.RoleProxy)
+	_, _, err = client2.dial(context.TODO(), server2.config.Listener.Addr().String())
+	require.Error(t, err)
 
-		clientCAs := tc.server.RootCAs
-		tc.server.RootCAs = nil
-
-		server, err := NewServer(ServerConfig{
-			AccessCache:   &mockAccessCache{},
-			Listener:      listener,
-			TLSConfig:     tc.server,
-			ClusterDialer: &mockClusterDialer{},
-			getConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-				config := tc.server.Clone()
-				config.ClientAuth = tls.RequireAndVerifyClientCert
-				config.ClientCAs = clientCAs
-				return config, nil
-			},
-		})
-		require.NoError(t, err)
-		go server.Serve()
-
-		client, err := NewClient(ClientConfig{
-			AccessCache: &mockAccessCache{},
-			TLSConfig:   tc.client,
-		})
-		require.NoError(t, err)
-
-		t.Cleanup(func() {
-			server.Close()
-			client.Close()
-		})
-
-		_, _, err = client.dial(context.TODO(), listener.Addr().String())
-		if tc.expectErr {
-			require.Error(t, err, tc.desc)
-		} else {
-			require.NoError(t, err, tc.desc)
-		}
-	}
+	// certificates with correct role from different CAs
+	client3, _ := setupClient(t, ca1, ca2, types.RoleProxy)
+	server3, _ := setupServer(t, ca2, ca1, types.RoleProxy)
+	stream, _, err = client3.dial(context.TODO(), server3.config.Listener.Addr().String())
+	require.NoError(t, err)
+	require.NotNil(t, stream)
+	require.NoError(t, sendMsg(stream))
+	stream.CloseSend()
 }
