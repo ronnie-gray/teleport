@@ -40,6 +40,7 @@ BUILDBOX_CENTOS7=quay.io/gravitational/teleport-buildbox-centos7:$(RUNTIME)
 BUILDBOX_CENTOS7_FIPS=quay.io/gravitational/teleport-buildbox-centos7-fips:$(RUNTIME)
 BUILDBOX_ARM=quay.io/gravitational/teleport-buildbox-arm:$(RUNTIME)
 BUILDBOX_ARM_FIPS=quay.io/gravitational/teleport-buildbox-arm-fips:$(RUNTIME)
+BUILDBOX_TELETERM=quay.io/gravitational/teleport-buildbox-teleterm:$(RUNTIME)
 
 # These variables are used to dynamically change the name of the buildbox Docker image used by the 'release'
 # target. The other solution was to remove the 'buildbox' dependency from the 'release' target, but this would
@@ -196,12 +197,32 @@ buildbox-arm-fips: buildbox-fips
 		--cache-from $(BUILDBOX_ARM_FIPS) \
 		--tag $(BUILDBOX_ARM_FIPS) -f Dockerfile-arm-fips .
 
+# TODO: Add description.
+# TODO: Do we need that `if [[ "$(BUILDBOX_NAME)" == "$(BUILDBOX)" ]]; then \` stuff?
+.PHONY:buildbox-teleterm
+buildbox-teleterm: buildbox
+	@if [[ $${DRONE} == "true" ]] && ! docker inspect --type=image $(BUILDBOX_TELETERM) 2>&1 >/dev/null; then docker pull $(BUILDBOX_TELETERM) || true; fi;
+	docker build \
+		--build-arg RUNTIME=$(RUNTIME) \
+		--build-arg BUILDARCH=$(RUNTIME_ARCH) \
+		$(if [[ $${RUNTIME_ARCH} == "arm64" ]]; then echo "--build-arg GRPC_NODE_PLUGIN_BINARY_TYPE=compiled"; fi) \
+		--cache-from $(BUILDBOX) \
+		--cache-from $(BUILDBOX_TELETERM) \
+		--tag $(BUILDBOX_TELETERM) -f Dockerfile-teleterm .
+
 # grpc generates GRPC stubs from inside the buildbox
 .PHONY: grpc
 grpc: buildbox
 	docker run \
 		$(DOCKERFLAGS) -e CLANG_FORMAT=/usr/bin/clang-format-10 -t $(BUILDBOX) \
 		make -C /go/src/github.com/gravitational/teleport buildbox-grpc
+
+# grpc-teleterm generates GRPC stubs for Teleterm from inside buildbox-teleterm
+.PHONY: grpc-teleterm
+grpc-teleterm: buildbox-teleterm
+	docker run \
+		$(DOCKERFLAGS) -e CLANG_FORMAT=/usr/bin/clang-format-10 -t $(BUILDBOX_TELETERM) \
+		make -C /go/src/github.com/gravitational/teleport buildbox-grpc-teleterm
 
 #
 # Removes the docker image
