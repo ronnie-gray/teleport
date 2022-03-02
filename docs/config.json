@@ -205,10 +205,6 @@
             {
               "title": "Networking",
               "slug": "/setup/reference/networking/"
-            },
-            {
-              "title": "Enterprise License File",
-              "slug": "/setup/reference/license/"
             }
           ]
         }
@@ -669,7 +665,7 @@
           "slug": "/enterprise/getting-started/"
         },
         {
-          "title": "Single sign-on (SSO)",
+          "title": "Single Sign-On (SSO)",
           "slug": "/enterprise/sso/",
           "entries": [
             {
@@ -717,6 +713,10 @@
         {
           "title": "HSM",
           "slug": "/enterprise/hsm/"
+        },
+        {
+          "title": "Enterprise License File",
+          "slug": "/enterprise/license/"
         }
       ]
     },
@@ -1072,6 +1072,11 @@
     {
       "source": "/kubernetes-access/guides/migration/",
       "destination": "/kubernetes-access/introduction/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/setup/reference/license/",
+      "destination": "/docs/enterprise/license/",
       "permanent": true
     }
   ]
