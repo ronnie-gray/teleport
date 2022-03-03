@@ -189,6 +189,8 @@ type Server struct {
 
 	// lockWatcher is the server's lock watcher.
 	lockWatcher *services.LockWatcher
+
+	connectedProxies srv.ConnectedProxies
 }
 
 // GetClock returns server clock implementation
@@ -565,6 +567,13 @@ func SetX11ForwardingConfig(xc *x11.ServerConfig) ServerOption {
 	}
 }
 
+func SetConnectedProxies(connectedProxies srv.ConnectedProxies) ServerOption {
+	return func(s *Server) error {
+		s.connectedProxies = connectedProxies
+		return nil
+	}
+}
+
 // New returns an unstarted server
 func New(addr utils.NetAddr,
 	hostname string,
@@ -691,17 +700,18 @@ func New(addr utils.NetAddr,
 		heartbeatMode = srv.HeartbeatModeNode
 	}
 	heartbeat, err := srv.NewHeartbeat(srv.HeartbeatConfig{
-		Mode:            heartbeatMode,
-		Context:         ctx,
-		Component:       component,
-		Announcer:       s.authService,
-		GetServerInfo:   s.getServerInfo,
-		KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-		AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-		ServerTTL:       apidefaults.ServerAnnounceTTL,
-		CheckPeriod:     defaults.HeartbeatCheckPeriod,
-		Clock:           s.clock,
-		OnHeartbeat:     s.onHeartbeat,
+		Mode:             heartbeatMode,
+		Context:          ctx,
+		Component:        component,
+		Announcer:        s.authService,
+		GetServerInfo:    s.getServerInfo,
+		KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+		AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+		ServerTTL:        apidefaults.ServerAnnounceTTL,
+		CheckPeriod:      defaults.HeartbeatCheckPeriod,
+		Clock:            s.clock,
+		OnHeartbeat:      s.onHeartbeat,
+		ConnectedProxies: s.connectedProxies,
 	})
 	if err != nil {
 		s.srv.Close()

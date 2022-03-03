@@ -100,6 +100,8 @@ type Config struct {
 	CloudMeta *cloud.Metadata
 	// CloudIAM configures IAM for cloud hosted databases.
 	CloudIAM *cloud.IAM
+	// ConnectedProxies represents the proxy an agent is currently connected to.
+	ConnectedProxies srv.ConnectedProxies
 }
 
 // NewAuditFn defines a function that creates an audit logger.
@@ -462,16 +464,17 @@ func (s *Server) getProxiedDatabases() (databases types.Databases) {
 // startHeartbeat starts the registration heartbeat to the auth server.
 func (s *Server) startHeartbeat(ctx context.Context, database types.Database) error {
 	heartbeat, err := srv.NewHeartbeat(srv.HeartbeatConfig{
-		Context:         s.closeContext,
-		Component:       teleport.ComponentDatabase,
-		Mode:            srv.HeartbeatModeDB,
-		Announcer:       s.cfg.AccessPoint,
-		GetServerInfo:   s.getServerInfoFunc(database),
-		KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-		AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-		CheckPeriod:     defaults.HeartbeatCheckPeriod,
-		ServerTTL:       apidefaults.ServerAnnounceTTL,
-		OnHeartbeat:     s.cfg.OnHeartbeat,
+		Context:          s.closeContext,
+		Component:        teleport.ComponentDatabase,
+		Mode:             srv.HeartbeatModeDB,
+		Announcer:        s.cfg.AccessPoint,
+		GetServerInfo:    s.getServerInfoFunc(database),
+		KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+		AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+		CheckPeriod:      defaults.HeartbeatCheckPeriod,
+		ServerTTL:        apidefaults.ServerAnnounceTTL,
+		OnHeartbeat:      s.cfg.OnHeartbeat,
+		ConnectedProxies: s.cfg.ConnectedProxies,
 	})
 	if err != nil {
 		return trace.Wrap(err)

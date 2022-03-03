@@ -1797,6 +1797,8 @@ func (process *TeleportProcess) initSSH() error {
 	})
 
 	var agentPool *reversetunnel.AgentPool
+	var connectedProxies *reversetunnel.ConnectedProxies
+
 	var conn *Connector
 	var ebpf bpf.BPF
 	var rm restricted.Manager
@@ -1935,6 +1937,9 @@ func (process *TeleportProcess) initSSH() error {
 			return trace.Wrap(err)
 		}
 
+		// Initialize connected proxy before creating ssh server or agent pool.
+		connectedProxies = reversetunnel.NewConnectedProxies()
+
 		s, err = regular.New(cfg.SSH.Addr,
 			cfg.Hostname,
 			[]ssh.Signer{conn.ServerIdentity.KeySigner},
@@ -1963,6 +1968,7 @@ func (process *TeleportProcess) initSSH() error {
 			regular.SetAllowTCPForwarding(cfg.SSH.AllowTCPForwarding),
 			regular.SetLockWatcher(lockWatcher),
 			regular.SetX11ForwardingConfig(cfg.SSH.X11),
+			regular.SetConnectedProxies(connectedProxies),
 		)
 		if err != nil {
 			return trace.Wrap(err)
@@ -2005,15 +2011,16 @@ func (process *TeleportProcess) initSSH() error {
 			agentPool, err = reversetunnel.NewAgentPool(
 				process.ExitContext(),
 				reversetunnel.AgentPoolConfig{
-					Component:   teleport.ComponentNode,
-					HostUUID:    conn.ServerIdentity.ID.HostUUID,
-					Resolver:    conn.TunnelProxyResolver(),
-					Client:      conn.Client,
-					AccessPoint: conn.Client,
-					HostSigner:  conn.ServerIdentity.KeySigner,
-					Cluster:     conn.ServerIdentity.Cert.Extensions[utils.CertExtensionAuthority],
-					Server:      s,
-					FIPS:        process.Config.FIPS,
+					Component:        teleport.ComponentNode,
+					HostUUID:         conn.ServerIdentity.ID.HostUUID,
+					Resolver:         conn.TunnelProxyResolver(),
+					Client:           conn.Client,
+					AccessPoint:      conn.Client,
+					HostSigner:       conn.ServerIdentity.KeySigner,
+					Cluster:          conn.ServerIdentity.Cert.Extensions[utils.CertExtensionAuthority],
+					Server:           s,
+					FIPS:             process.Config.FIPS,
+					ConnectedProxies: connectedProxies,
 				})
 			if err != nil {
 				return trace.Wrap(err)
@@ -3623,6 +3630,8 @@ func (process *TeleportProcess) initApps() {
 	var agentPool *reversetunnel.AgentPool
 	var conn *Connector
 
+	connectedProxies := reversetunnel.NewConnectedProxies()
+
 	process.RegisterCriticalFunc("apps.start", func() error {
 		var ok bool
 		var event Event
@@ -3769,6 +3778,7 @@ func (process *TeleportProcess) initApps() {
 			Apps:             applications,
 			ResourceMatchers: process.Config.Apps.ResourceMatchers,
 			OnHeartbeat:      process.onHeartbeat(teleport.ComponentApp),
+			ConnectedProxies: connectedProxies,
 		})
 		if err != nil {
 			return trace.Wrap(err)
@@ -3784,15 +3794,16 @@ func (process *TeleportProcess) initApps() {
 		agentPool, err = reversetunnel.NewAgentPool(
 			process.ExitContext(),
 			reversetunnel.AgentPoolConfig{
-				Component:   teleport.ComponentApp,
-				HostUUID:    conn.ServerIdentity.ID.HostUUID,
-				Resolver:    tunnelAddrResolver,
-				Client:      conn.Client,
-				Server:      appServer,
-				AccessPoint: accessPoint,
-				HostSigner:  conn.ServerIdentity.KeySigner,
-				Cluster:     clusterName,
-				FIPS:        process.Config.FIPS,
+				Component:        teleport.ComponentApp,
+				HostUUID:         conn.ServerIdentity.ID.HostUUID,
+				Resolver:         tunnelAddrResolver,
+				Client:           conn.Client,
+				Server:           appServer,
+				AccessPoint:      accessPoint,
+				HostSigner:       conn.ServerIdentity.KeySigner,
+				Cluster:          clusterName,
+				FIPS:             process.Config.FIPS,
+				ConnectedProxies: connectedProxies,
 			})
 		if err != nil {
 			return trace.Wrap(err)

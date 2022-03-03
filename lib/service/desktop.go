@@ -33,6 +33,7 @@ import (
 	"github.com/gravitational/teleport/lib/limiter"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 	"github.com/gravitational/teleport/lib/services"
+	"github.com/gravitational/teleport/lib/srv"
 	"github.com/gravitational/teleport/lib/srv/desktop"
 	"github.com/gravitational/teleport/lib/utils"
 )
@@ -205,6 +206,11 @@ func (process *TeleportProcess) initWindowsDesktopServiceRegistered(log *logrus.
 		publicAddr = listener.Addr().String()
 	}
 
+	var connectedProxies srv.ConnectedProxies
+	if agentPool != nil {
+		connectedProxies = agentPool.ConnectedProxies()
+	}
+
 	srv, err := desktop.NewWindowsService(desktop.WindowsServiceConfig{
 		DataDir:      process.Config.DataDir,
 		Log:          log,
@@ -218,10 +224,11 @@ func (process *TeleportProcess) initWindowsDesktopServiceRegistered(log *logrus.
 		AuthClient:   conn.Client,
 		HostLabelsFn: cfg.WindowsDesktop.HostLabels.LabelsForHost,
 		Heartbeat: desktop.HeartbeatConfig{
-			HostUUID:    cfg.HostUUID,
-			PublicAddr:  publicAddr,
-			StaticHosts: cfg.WindowsDesktop.Hosts,
-			OnHeartbeat: process.onHeartbeat(teleport.ComponentWindowsDesktop),
+			HostUUID:         cfg.HostUUID,
+			PublicAddr:       publicAddr,
+			StaticHosts:      cfg.WindowsDesktop.Hosts,
+			OnHeartbeat:      process.onHeartbeat(teleport.ComponentWindowsDesktop),
+			ConnectedProxies: connectedProxies,
 		},
 		LDAPConfig:           desktop.LDAPConfig(cfg.WindowsDesktop.LDAP),
 		DiscoveryBaseDN:      cfg.WindowsDesktop.Discovery.BaseDN,

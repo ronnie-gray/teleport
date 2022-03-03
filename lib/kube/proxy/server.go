@@ -49,6 +49,8 @@ type TLSServerConfig struct {
 	AccessPoint auth.ReadKubernetesAccessPoint
 	// OnHeartbeat is a callback for kubernetes_service heartbeats.
 	OnHeartbeat func(error)
+	// ConnectedProxies represents the proxies an agent is currently connected to.
+	ConnectedProxies srv.ConnectedProxies
 	// Log is the logger.
 	Log log.FieldLogger
 }
@@ -139,17 +141,18 @@ func NewTLSServer(cfg TLSServerConfig) (*TLSServer, error) {
 		(cfg.KubeServiceType == LegacyProxyService && len(fwd.kubeClusters()) > 0) {
 		log.Debugf("Starting kubernetes_service heartbeats for %q", cfg.Component)
 		server.heartbeat, err = srv.NewHeartbeat(srv.HeartbeatConfig{
-			Mode:            srv.HeartbeatModeKube,
-			Context:         cfg.Context,
-			Component:       cfg.Component,
-			Announcer:       cfg.AuthClient,
-			GetServerInfo:   server.GetServerInfo,
-			KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-			AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-			ServerTTL:       apidefaults.ServerAnnounceTTL,
-			CheckPeriod:     defaults.HeartbeatCheckPeriod,
-			Clock:           cfg.Clock,
-			OnHeartbeat:     cfg.OnHeartbeat,
+			Mode:             srv.HeartbeatModeKube,
+			Context:          cfg.Context,
+			Component:        cfg.Component,
+			Announcer:        cfg.AuthClient,
+			GetServerInfo:    server.GetServerInfo,
+			KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+			AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+			ServerTTL:        apidefaults.ServerAnnounceTTL,
+			CheckPeriod:      defaults.HeartbeatCheckPeriod,
+			ConnectedProxies: cfg.ConnectedProxies,
+			Clock:            cfg.Clock,
+			OnHeartbeat:      cfg.OnHeartbeat,
 		})
 		if err != nil {
 			return nil, trace.Wrap(err)

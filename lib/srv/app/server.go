@@ -98,6 +98,9 @@ type Config struct {
 
 	// OnReconcile is called after each database resource reconciliation.
 	OnReconcile func(types.Apps)
+
+	// ConnectedProxies represents the proxy an agent is currently connected to.
+	ConnectedProxies srv.ConnectedProxies
 }
 
 // CheckAndSetDefaults makes sure the configuration has the minimum required
@@ -347,16 +350,17 @@ func (s *Server) stopDynamicLabels(name string) {
 // startHeartbeat starts the registration heartbeat to the auth server.
 func (s *Server) startHeartbeat(ctx context.Context, app types.Application) error {
 	heartbeat, err := srv.NewHeartbeat(srv.HeartbeatConfig{
-		Context:         s.closeContext,
-		Component:       teleport.ComponentApp,
-		Mode:            srv.HeartbeatModeApp,
-		Announcer:       s.c.AccessPoint,
-		GetServerInfo:   s.getServerInfoFunc(app),
-		KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-		AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-		CheckPeriod:     defaults.HeartbeatCheckPeriod,
-		ServerTTL:       apidefaults.ServerAnnounceTTL,
-		OnHeartbeat:     s.c.OnHeartbeat,
+		Context:          s.closeContext,
+		Component:        teleport.ComponentApp,
+		Mode:             srv.HeartbeatModeApp,
+		Announcer:        s.c.AccessPoint,
+		GetServerInfo:    s.getServerInfoFunc(app),
+		KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+		AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+		CheckPeriod:      defaults.HeartbeatCheckPeriod,
+		ServerTTL:        apidefaults.ServerAnnounceTTL,
+		OnHeartbeat:      s.c.OnHeartbeat,
+		ConnectedProxies: s.c.ConnectedProxies,
 	})
 	if err != nil {
 		return trace.Wrap(err)

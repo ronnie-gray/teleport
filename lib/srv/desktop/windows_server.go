@@ -218,6 +218,8 @@ type HeartbeatConfig struct {
 	OnHeartbeat func(error)
 	// StaticHosts is an optional list of static Windows hosts to register.
 	StaticHosts []utils.NetAddr
+	// ConnectedProxies represents the proxies an agent is currently connected to.
+	ConnectedProxies srv.ConnectedProxies
 }
 
 func (cfg *WindowsServiceConfig) checkAndSetDiscoveryDefaults() error {
@@ -558,16 +560,17 @@ func (s *WindowsService) scheduleNextLDAPCertRenewalLocked(after time.Duration) 
 
 func (s *WindowsService) startServiceHeartbeat() error {
 	heartbeat, err := srv.NewHeartbeat(srv.HeartbeatConfig{
-		Context:         s.closeCtx,
-		Component:       teleport.ComponentWindowsDesktop,
-		Mode:            srv.HeartbeatModeWindowsDesktopService,
-		Announcer:       s.cfg.AccessPoint,
-		GetServerInfo:   s.getServiceHeartbeatInfo,
-		KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-		AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-		CheckPeriod:     defaults.HeartbeatCheckPeriod,
-		ServerTTL:       apidefaults.ServerAnnounceTTL,
-		OnHeartbeat:     s.cfg.Heartbeat.OnHeartbeat,
+		Context:          s.closeCtx,
+		Component:        teleport.ComponentWindowsDesktop,
+		Mode:             srv.HeartbeatModeWindowsDesktopService,
+		Announcer:        s.cfg.AccessPoint,
+		GetServerInfo:    s.getServiceHeartbeatInfo,
+		KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+		AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+		CheckPeriod:      defaults.HeartbeatCheckPeriod,
+		ServerTTL:        apidefaults.ServerAnnounceTTL,
+		OnHeartbeat:      s.cfg.Heartbeat.OnHeartbeat,
+		ConnectedProxies: s.cfg.Heartbeat.ConnectedProxies,
 	})
 	if err != nil {
 		return trace.Wrap(err)
@@ -590,16 +593,17 @@ func (s *WindowsService) startServiceHeartbeat() error {
 func (s *WindowsService) startStaticHostHeartbeats() error {
 	for _, host := range s.cfg.Heartbeat.StaticHosts {
 		heartbeat, err := srv.NewHeartbeat(srv.HeartbeatConfig{
-			Context:         s.closeCtx,
-			Component:       teleport.ComponentWindowsDesktop,
-			Mode:            srv.HeartbeatModeWindowsDesktop,
-			Announcer:       s.cfg.AccessPoint,
-			GetServerInfo:   s.staticHostHeartbeatInfo(host, s.cfg.HostLabelsFn),
-			KeepAlivePeriod: apidefaults.ServerKeepAliveTTL(),
-			AnnouncePeriod:  apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
-			CheckPeriod:     defaults.HeartbeatCheckPeriod,
-			ServerTTL:       apidefaults.ServerAnnounceTTL,
-			OnHeartbeat:     s.cfg.Heartbeat.OnHeartbeat,
+			Context:          s.closeCtx,
+			Component:        teleport.ComponentWindowsDesktop,
+			Mode:             srv.HeartbeatModeWindowsDesktop,
+			Announcer:        s.cfg.AccessPoint,
+			GetServerInfo:    s.staticHostHeartbeatInfo(host, s.cfg.HostLabelsFn),
+			KeepAlivePeriod:  apidefaults.ServerKeepAliveTTL(),
+			AnnouncePeriod:   apidefaults.ServerAnnounceTTL/2 + utils.RandomDuration(apidefaults.ServerAnnounceTTL/10),
+			CheckPeriod:      defaults.HeartbeatCheckPeriod,
+			ServerTTL:        apidefaults.ServerAnnounceTTL,
+			OnHeartbeat:      s.cfg.Heartbeat.OnHeartbeat,
+			ConnectedProxies: s.cfg.Heartbeat.ConnectedProxies,
 		})
 		if err != nil {
 			return trace.Wrap(err)

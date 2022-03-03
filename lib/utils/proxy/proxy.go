@@ -56,7 +56,7 @@ func dialWithDeadline(network string, addr string, config *ssh.ClientConfig) (*s
 // dialALPNWithDeadline allows connecting to Teleport in single-port mode. SSH protocol is wrapped into
 // TLS connection where TLS ALPN protocol is set to ProtocolReverseTunnel allowing ALPN Proxy to route the
 // incoming connection to ReverseTunnel proxy service.
-func dialALPNWithDeadline(network string, addr string, config *ssh.ClientConfig, insecure bool) (*ssh.Client, error) {
+func (d directDial) dialALPNWithDeadline(network string, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	dialer := &net.Dialer{
 		Timeout: config.Timeout,
 	}
@@ -64,9 +64,16 @@ func dialALPNWithDeadline(network string, addr string, config *ssh.ClientConfig,
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+
+	protocols := make([]string, 0)
+	if d.proxyPeeringSupported {
+		protocols = append(protocols, string(alpncommon.ProtocolReverseTunnelV2))
+	}
+	protocols = append(protocols, string(alpncommon.ProtocolReverseTunnel))
+
 	tlsConn, err := tls.DialWithDialer(dialer, network, addr, &tls.Config{
-		NextProtos:         []string{string(alpncommon.ProtocolReverseTunnel)},
-		InsecureSkipVerify: insecure,
+		NextProtos:         protocols,
+		InsecureSkipVerify: d.insecure,
 		ServerName:         address.Host(),
 	})
 	if err != nil {
@@ -87,6 +94,8 @@ type Dialer interface {
 type directDial struct {
 	// tlsRoutingEnabled indicates that proxy is running in TLSRouting mode.
 	tlsRoutingEnabled bool
+	// proxyPeeringSupported indicates the client supports ProtocolReverseTunnelV2.
+	proxyPeeringSupported bool
 	// insecure is whether to skip certificate validation.
 	insecure bool
 }
@@ -94,7 +103,7 @@ type directDial struct {
 // Dial calls ssh.Dial directly.
 func (d directDial) Dial(network string, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	if d.tlsRoutingEnabled {
-		client, err := dialALPNWithDeadline(network, addr, config, d.insecure)
+		client, err := d.dialALPNWithDeadline(network, addr, config)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -114,8 +123,15 @@ func (d directDial) DialTimeout(network, address string, timeout time.Duration) 
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+
+		protocols := make([]string, 0)
+		if d.proxyPeeringSupported {
+			protocols = append(protocols, string(alpncommon.ProtocolReverseTunnelV2))
+		}
+		protocols = append(protocols, string(alpncommon.ProtocolReverseTunnel))
+
 		tlsConn, err := tls.Dial("tcp", address, &tls.Config{
-			NextProtos:         []string{string(alpncommon.ProtocolReverseTunnel)},
+			NextProtos:         protocols,
 			InsecureSkipVerify: d.insecure,
 			ServerName:         addr.Host(),
 		})
@@ -136,6 +152,8 @@ type proxyDial struct {
 	proxyHost string
 	// tlsRoutingEnabled indicates that proxy is running in TLSRouting mode.
 	tlsRoutingEnabled bool
+	// proxyPeeringSupported indicates the client supports ProtocolReverseTunnelV2.
+	proxyPeeringSupported bool
 	// insecure is whether to skip certificate validation.
 	insecure bool
 }
@@ -158,8 +176,15 @@ func (d proxyDial) DialTimeout(network, address string, timeout time.Duration) (
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+
+		protocols := make([]string, 0)
+		if d.proxyPeeringSupported {
+			protocols = append(protocols, string(alpncommon.ProtocolReverseTunnelV2))
+		}
+		protocols = append(protocols, string(alpncommon.ProtocolReverseTunnel))
+
 		conn = tls.Client(conn, &tls.Config{
-			NextProtos:         []string{string(alpncommon.ProtocolReverseTunnel)},
+			NextProtos:         protocols,
 			InsecureSkipVerify: d.insecure,
 			ServerName:         address.Host(),
 		})
@@ -183,8 +208,15 @@ func (d proxyDial) Dial(network string, addr string, config *ssh.ClientConfig) (
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+
+		protocols := make([]string, 0)
+		if d.proxyPeeringSupported {
+			protocols = append(protocols, string(alpncommon.ProtocolReverseTunnelV2))
+		}
+		protocols = append(protocols, string(alpncommon.ProtocolReverseTunnel))
+
 		pconn = tls.Client(pconn, &tls.Config{
-			NextProtos:         []string{string(alpncommon.ProtocolReverseTunnel)},
+			NextProtos:         protocols,
 			InsecureSkipVerify: d.insecure,
 			ServerName:         address.Host(),
 		})
@@ -204,6 +236,10 @@ func (d proxyDial) Dial(network string, addr string, config *ssh.ClientConfig) (
 type dialerOptions struct {
 	// tlsRoutingEnabled indicates that proxy is running in TLSRouting mode.
 	tlsRoutingEnabled bool
+
+	// proxyPeeringSupported indicates the client supports ProtocolReverseTunnelV2.
+	proxyPeeringSupported bool
+
 	// insecureSkipTLSVerify is whether to skip certificate validation.
 	insecureSkipTLSVerify bool
 }
@@ -215,6 +251,12 @@ type DialerOptionFunc func(options *dialerOptions)
 func WithALPNDialer() DialerOptionFunc {
 	return func(options *dialerOptions) {
 		options.tlsRoutingEnabled = true
+	}
+}
+
+func WithProxyPeeringSupport() DialerOptionFunc {
+	return func(options *dialerOptions) {
+		options.proxyPeeringSupported = true
 	}
 }
 
@@ -243,15 +285,17 @@ func DialerFromEnvironment(addr string, opts ...DialerOptionFunc) Dialer {
 	if proxyAddr == "" {
 		log.Debugf("No proxy set in environment, returning direct dialer.")
 		return directDial{
-			tlsRoutingEnabled: options.tlsRoutingEnabled,
-			insecure:          options.insecureSkipTLSVerify,
+			tlsRoutingEnabled:     options.tlsRoutingEnabled,
+			proxyPeeringSupported: options.proxyPeeringSupported,
+			insecure:              options.insecureSkipTLSVerify,
 		}
 	}
 	log.Debugf("Found proxy %q in environment, returning proxy dialer.", proxyAddr)
 	return proxyDial{
-		proxyHost:         proxyAddr,
-		tlsRoutingEnabled: options.tlsRoutingEnabled,
-		insecure:          options.insecureSkipTLSVerify,
+		proxyHost:             proxyAddr,
+		tlsRoutingEnabled:     options.tlsRoutingEnabled,
+		proxyPeeringSupported: options.proxyPeeringSupported,
+		insecure:              options.insecureSkipTLSVerify,
 	}
 }
 

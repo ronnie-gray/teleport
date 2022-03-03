@@ -173,6 +173,8 @@ func (process *TeleportProcess) initDatabaseService() (retErr error) {
 		return trace.Wrap(err)
 	}
 
+	connectedProxies := reversetunnel.NewConnectedProxies()
+
 	// Create and start the database service.
 	dbService, err := db.New(process.ExitContext(), db.Config{
 		Clock:       process.Clock,
@@ -194,6 +196,7 @@ func (process *TeleportProcess) initDatabaseService() (retErr error) {
 		AWSMatchers:      process.Config.Databases.AWSMatchers,
 		OnHeartbeat:      process.onHeartbeat(teleport.ComponentDatabase),
 		LockWatcher:      lockWatcher,
+		ConnectedProxies: connectedProxies,
 	})
 	if err != nil {
 		return trace.Wrap(err)
@@ -211,15 +214,16 @@ func (process *TeleportProcess) initDatabaseService() (retErr error) {
 	agentPool, err := reversetunnel.NewAgentPool(
 		process.ExitContext(),
 		reversetunnel.AgentPoolConfig{
-			Component:   teleport.ComponentDatabase,
-			HostUUID:    conn.ServerIdentity.ID.HostUUID,
-			Resolver:    tunnelAddrResolver,
-			Client:      conn.Client,
-			Server:      dbService,
-			AccessPoint: conn.Client,
-			HostSigner:  conn.ServerIdentity.KeySigner,
-			Cluster:     clusterName,
-			FIPS:        process.Config.FIPS,
+			Component:        teleport.ComponentDatabase,
+			HostUUID:         conn.ServerIdentity.ID.HostUUID,
+			Resolver:         tunnelAddrResolver,
+			Client:           conn.Client,
+			Server:           dbService,
+			AccessPoint:      conn.Client,
+			HostSigner:       conn.ServerIdentity.KeySigner,
+			Cluster:          clusterName,
+			FIPS:             process.Config.FIPS,
+			ConnectedProxies: connectedProxies,
 		})
 	if err != nil {
 		return trace.Wrap(err)
