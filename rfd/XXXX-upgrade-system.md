@@ -42,6 +42,12 @@ with support for things like user-provided upgrade scripts and custom target sel
 configuration and "just works".
 
 
+### Design Philosophy
+
+- Level-triggered loops
+- Idempotence
+- 
+
 ### Abstract Model Overview
 
 This document proposes an modular system capable of supporting a wide range
@@ -228,16 +234,123 @@ be repurposed to represent a server installation which may or may not be running
 service.  Whether or not other services would also benefit from unification in this way
 can be evaluated on a case-by-case basis down the road.
 
-- TODO: protobuf spec for control stream and installation spec.
+- TODO: finish protobuf spec
 
+```protobuf
+// InventoryService is a subset of the AuthService (broken out for the readability)
+service InventoryService {
+    // InventoryControlStream is a bidirectional stream that handles presence and
+    // control messages for peripheral teleport installations.
+    rpc InventoryControlStream(stream ClientMessage) returns (stream ServerMessage);
+}
+
+
+// ClientMessage is sent from the client to the server.
+message ClientMessage {
+    oneof Msg {
+        // Hello is always the first message sent.
+        ClientHello Hello = 1;
+        // Heartbeat periodically updates status.
+        Heartbeat Heartbeat = 2;
+        // LocalScriptInstallResult notifies of installation failures.
+        LocalScriptInstallResult LocalScriptInstallResult = 3;
+    }
+}
+
+// ServerMessage is sent from the server to the client.
+message ServerMessage {
+    oneof Msg {
+        // Hello is always the first message sent.
+        ServerHello Hello = 1;
+        // LocalScriptInstall instructs the client to perform a local-script
+        // upgrade operation.
+        LocalScriptInstall LocalScriptInstall = 2;
+    }
+}
+
+// ClientHello is the first message sent by the client and contains
+// information about the client's version, identity, and claimed capabilities.
+// The client's certificate is used to validate that it has *at least* the capabilities
+// claimed by its hello message. Subsequent messages are evaluated by the limits
+// claimed here.
+message ClientHello {
+    // Version is the currently running teleport version.
+    string Version = 1;
+    // ServerID is the unique ID of the server.
+    string ServerID = 2;
+    // Installers is a list of supported installers (e.g. `local-script`).
+    repeated string Installers = 3;
+
+    // ServerRoles is a list of teleport server roles (e.g. ``).
+    repeated string ServerRoles = 4; 
+}
+
+// Heatbeat periodically 
+message Heartbeat {
+    // TODO
+}
+
+// ServerHello is the first message sent by the server. 
+message ServerHello {
+    // Version is the currently running teleport version.
+    string Version = 1;
+}
+
+
+
+// LocalScriptInstall instructs a teleport isntance to perform a local-script
+// installation.
+message LocalScriptInstall {
+    // Target is the install target metadata.
+    map<string, string> Target = 1;
+    // Env is the script env variables.
+    map<string, string> Env = 2;
+    // Shell is the optional shell override.
+    string Shell = 3;
+    // Script is the script to be run.
+    string Script = 4;
+}
+
+
+// LocalScriptInstallResult informs auth server of result of a local-scrip installer
+// running. This is a best-effort message since some local-script installers may restart
+// the process as part of the installation.
+message LocalScriptInstallResult {
+    bool Success = 1;
+    string Error = 2; 
+}
+```
+
+*NOTE*: At the time I wrote the above, I had a fundamental misunderstanding of how peripheral
+teleport host certs worked. I was under the impression that each node had a single cert which
+encoded all of its builtin roles (e.g. `Node`, `App`, `Kube`, etc). Turns out that each service
+provisions its own certificate separately, and a lot of logic exists that assumes the existence
+of a singular builtin role per cert. This complicates the idea of working toward a unified
+heartbeat mechanism. Still in the process of reevaluating my thoughts on this.
 
 ### Version Directive and Reconciliation Loop
 
 - Nonce and controller of origin are enforced to prevent concurrent or unordered updates to
 version directive.
 
+- A `stale_after` field allows us to detect unexpected crashes/failures of automated controllers
+and warn about them, even if they are external to teleport.
+
 - Selectors, targets, and installers are defined as ordered sequences. Reconciliation loop always
 halts on first matching/compatible item in a sequence.
+
+- Installation targets are arbitrary mappings that must *at least* contain `version`, but may contain
+any additional information as well. Certain metadata is understood by teleport (e.g. `fips:yes|no`,
+`arch:amd64|arm64|...`), but additional metadata (e.g. `sha256sum:12345...`) is simply passed through
+to the install controller.  The target to be used for a given server is the first target that
+*is not incompatible* (i.e. no attempt to find the "most compatible" target is made).  A target is
+incompatible with a server if that server's version cannot safely upgrade/downgrade to that target,
+*or* if the target specifies a build attribute that differs from a build attribute of the current
+installation (e.g. `fips:yes` when current build is `fips:no`). We don't require that all build attributes
+are present since not all systems require knowledge of said attributes.  It is the responsibility of
+an installer to fail if it is not provided with sufficient attributes to perform the installation
+safely.
+
 
 - Reconciliation loop high-level steps:
   - Load `version-directive` resource.
@@ -261,6 +374,7 @@ spec:
   nonce: 2
   status: enabled
   version_controller: static-config
+  stale_after: <time>
   not_before: <time>
   not_after: <time>
   directives:
@@ -309,6 +423,27 @@ spec:
 be a loop that runs within the auth server, or an external plugin.
 
 - The only currently planned `version-controller` is the TUF version controller.
+
+
+#### Version Controller Mapping/Pipelines
+
+In order to maximize flexibility, it may be necessary to permit some form of "mapping" whereby
+the directives generated by a version controller can be modified by an external component prior
+to becoming the new state of the "active" `version-directive`. A good example of this would be
+a custom scheduler, which might consult some external state before setting the `not_before` and
+`not_after` fields of the `version-directive`.
+
+There are a few possible ways to go about a mapping/pipeline system, but
+the simplest would likely be to support both an active singleton `version-directive`, as well as
+an arbitrary number of named `version-directive`s which would have no effect on state.  In this
+scenario a TUF controller might output its `version-directive` to `/version-directives/tuf-pending`,
+and then a scheduler might load the version directive, modify it, and place it at
+`/version-directives/active`. If multiple steps are needed, an entire pipeline could be constructed
+in this manner, with the final hop updating the active directive.
+
+This kind of system demonstrates the importance of the `nonce`, `controller`, and `stale_after` fields
+of the `version-directive`, since it introduces a level of flexibility that could become a footgun without
+strong mechanisms for detecting misconfiguration.
 
 
 #### TUF Version Controller
@@ -363,7 +498,6 @@ spec:
               '*': '*'
 ```
 
-
 ### Install Controllers
 
 - From the point of view of the version reconciliation loop, an install controller is essentially
@@ -378,9 +512,7 @@ a function of the form `install(server_spec, target_spec)`.
 
 - The installer accepts the installation `target` as an "arguemnt", so that the version and any
 other relevant metadata can be extracted.  If the `target` is missing any of the expected metadata,
-the installer fails (different version controllers may generate different metadata).
-
-- 
+the installer fails (different version controllers may generate different metadata). 
 
 ```yaml
 # an installer attempts to apply an installation target to a node. this is an example
@@ -404,6 +536,7 @@ spec:
     apt install teleport-${VERSION:?}
 ```
 
+
 #### TUF Install Controller
 
 - The TUF install controller will not need to be configured by users.  It will be the
@@ -411,6 +544,7 @@ default intall controller used whenever the TUF `version-controller` is active.
 
 - The TUF install controller will download the appropriate package from `get.gravitational.com`
 and perform standard TUF veridication (hash + size).
+
 
 #### `teleport verify`
 
@@ -442,7 +576,42 @@ envs that need to be added in addition to the modifications to our existing CI.
 an important part of the prerequisite work to get the TUF system online. We don't neeed to add TUF support for
 all build targets at once, so we may specifically target reliable signing of amd64/linux packages first.
 
- 
+
+### Rollbacks
+
+Rollbacks will come in two flavors:
+
+1. Remote rollback: Version directive is changed to target an older version. Older version is installed via
+normal install controller. Requires the new teleport installation to work at least well
+enough to perform any functions required by the install controller.
+
+2. Local rollback: The previous teleport installation remains cached during the upgrade, and some local process
+monitors the health of the new version. If the new version remains unhealthy for too long, it is forcibly
+terminated and the previous installation is replaced.
+
+The first option is an emergent property of the level-triggered system and will be supported from the beginning.
+Teleport won't bother to distinguish between an upgrade and a downgrade. No special downgrade logic is required
+for this option to work.
+
+The second option will require a decent amount of specialized support and will be added later down the line. Script
+installers would likely need to be amended in some way to work correctly with a local rollback scheme. The
+details of how exactly local rollbacks should function are TBD. Some possibilities include:
+
+- Initially install new versions to a pending location (e.g. `/usr/local/bin/teleport.pending`).  Have teleport
+automatically fork a background monitor and `exec`s into the pending binary if it is detected on startup. If the
+background monitor observes that its requirements are met, it moves the pending binary to the active location,
+replacing the previous install.
+
+- Formally embrace the idea of multiple concurrently installed teleport versions
+and provide a thin "proxy binary" that can seamlessly `exec` into the current target version based on some filesystem
+config, potentially launching a background monitor of a different version first depending on said config. This has the
+downside of introducing a new binary, but the upside of eliminating the need for messy move/rename schemes.
+
+- Fully install the new version, creating a backup of the previous version first. Rely on an external mechanism for
+ensuring that the monitor/revert process gets run (e.g. by registering a new systemd unit). This has the upside of
+probably being compatible with script-based installers without any changes (teleport could create the backup and register
+the unit before starting the script), but has the downside of introducing an external dependency.
+
 ## Notes
 
 ### Open Questions
@@ -468,3 +637,23 @@ of pending state and only finalizing the install if it appears healthy?
 - Figure out a good model for providing visibility into current upgrade/versioning status.
 
 - Rename `version-controller` to `manifest-controller`? Names are hard.
+
+- We know we want some kind of `remote-script` installer for those that want to upgrade teleport
+instances indirectly (e.g. by changing a container image).  How should this work exactly though?
+Should it be identical to the `local-script` installer, but also have a `server_selector`?  Are
+there additional security concerns for remotely triggered upgrades that differ in kind from those
+of locally triggered uppgrades? Execution being triggered by the reported state of a node other
+than the one running the installer is definitely different in kind.
+
+- How explicitly should local nodes require opt-in? We obviously don't want to run any installers
+on a node that doesn't include explicit opt-in, but should we require explicit opt-in for specific
+installers? (e.g. `auto_upgrade: true` vs `permit_upgrade: ['local-script/foo', 'tuf/default']`)
+
+- How are we going to handle auth server upgrades? Since auth-servers can't do rolling upgrades,
+this is a lot trickier than upgrades of other kinds. We can obviously coordinate via backend state,
+but its basically impossible to distinguish between shutdown and poor performance.
+
+- Some folks have a *lot* of leaf clusters. It may be burdensome to manage ugprade states for individual
+clusters separately. Should we consider providing some means of having root clusters coordinate
+the versioning of leaf clusters? At what point are they so integrated that the isolation benefits are
+nullified and the users would be better off with a monolithic cluster?
