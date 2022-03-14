@@ -233,12 +233,6 @@ func writeProfile(t *testing.T, p *profile.Profile, oldSSHPath bool) {
 	require.NoError(t, ioutil.WriteFile(p.TLSCertPath(), tlsCert, 0600))
 	require.NoError(t, ioutil.WriteFile(p.TLSCAPathCluster(p.SiteName), tlsCACert, 0600))
 	require.NoError(t, ioutil.WriteFile(p.KnownHostsPath(), sshCACert, 0600))
-	// If oldSSHPath is specified, write the sshCert to the old ssh cert path.
-	// DELETE IN 8.0.0
-	if oldSSHPath {
-		require.NoError(t, ioutil.WriteFile(p.OldSSHCertPath(), sshCert, 0600))
-		return
-	}
 	require.NoError(t, os.MkdirAll(p.SSHDir(), 0700))
 	require.NoError(t, ioutil.WriteFile(p.SSHCertPath(), sshCert, 0600))
 }

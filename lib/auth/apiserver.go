@@ -221,12 +221,6 @@ func NewAPIServer(config *APIConfig) (http.Handler, error) {
 	srv.POST("/:version/github/requests/create", srv.withAuth(srv.createGithubAuthRequest))
 	srv.POST("/:version/github/requests/validate", srv.withAuth(srv.validateGithubAuthCallback))
 
-	// Provisioning tokens- Moved to grpc
-	// DELETE IN 8.0
-	srv.GET("/:version/tokens", srv.withAuth(srv.getTokens))
-	srv.GET("/:version/tokens/:token", srv.withAuth(srv.getToken))
-	srv.DELETE("/:version/tokens/:token", srv.withAuth(srv.deleteToken))
-
 	// Audit logs AKA events
 	srv.POST("/:version/events", srv.withAuth(srv.emitAuditEvent))
 	srv.GET("/:version/events", srv.withAuth(srv.searchEvents))
@@ -733,13 +727,6 @@ func (s *APIServer) createWebSession(auth ClientI, w http.ResponseWriter, r *htt
 	var req WebSessionReq
 	if err := httplib.ReadJSON(r, &req); err != nil {
 		return nil, trace.Wrap(err)
-	}
-
-	// DELETE IN 8.0: proxy v5 sends request with no user field.
-	// And since proxy v6, request will come with user field set, so grabbing user
-	// by param is not required.
-	if req.User == "" {
-		req.User = p.ByName("user")
 	}
 
 	if req.PrevSessionID != "" {
