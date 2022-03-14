@@ -544,10 +544,6 @@ func (a *fakeLog) EmitAuditEvent(ctx context.Context, e apievents.AuditEvent) er
 	return trace.NotImplemented("not implemented")
 }
 
-func (a *fakeLog) PostSessionSlice(s events.SessionSlice) error {
-	return trace.NotImplemented("not implemented")
-}
-
 func (a *fakeLog) UploadSessionRecording(r events.SessionRecording) error {
 	return trace.NotImplemented("not implemented")
 }

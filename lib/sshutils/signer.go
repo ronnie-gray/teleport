@@ -37,7 +37,7 @@ import (
 // If the provided Signer is not an RSA key or does not implement
 // ssh.AlgorithmSigner, it's returned as is.
 //
-// DELETE IN 5.0: assuming https://github.com/golang/go/issues/37278 is fixed
+// DELETE IN 11.0.0: assuming https://github.com/golang/go/issues/37278 is fixed
 // by then and we pull in the fix. Also delete all call sites.
 func AlgSigner(s ssh.Signer, alg string) ssh.Signer {
 	if alg == "" {

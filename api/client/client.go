@@ -902,7 +902,7 @@ func (c *Client) GetKubeServices(ctx context.Context) ([]types.Server, error) {
 
 // getKubeServicesFallback previous implementation of `GetKubeServices` function
 // using `GetKubeServices` RPC call.
-// DELETE IN 10.0
+// DELETE IN 11.0.0
 func (c *Client) getKubeServicesFallback(ctx context.Context) ([]types.Server, error) {
 	resp, err := c.grpc.GetKubeServices(ctx, &proto.GetKubeServicesRequest{}, c.callOpts...)
 	if err != nil {
@@ -944,21 +944,13 @@ func (c *Client) GetApplicationServers(ctx context.Context, namespace string) ([
 		return nil, trace.Wrap(err)
 	}
 
-	// In addition, we need to fetch legacy application servers.
-	//
-	// DELETE IN 9.0.
-	legacyServers, err := c.getAppServersFallback(ctx, namespace)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	return append(servers, legacyServers...), nil
+	return servers, nil
 }
 
 // getAppServersFallback fetches app servers using deprecated API call
 // `GetApplicationServers`.
 //
-// DELETE IN 10.0
+// DELETE IN 11.0.0
 func (c *Client) getApplicationServersFallback(ctx context.Context, namespace string) ([]types.AppServer, error) {
 	resp, err := c.grpc.GetApplicationServers(ctx, &proto.GetApplicationServersRequest{
 		Namespace: namespace,
@@ -984,7 +976,7 @@ func (c *Client) getApplicationServersFallback(ctx context.Context, namespace st
 // getAppServersFallback fetches app servers using legacy API call
 // `GetAppServers`.
 //
-// DELETE IN 9.0.
+// DELETE IN 11.0.0.
 func (c *Client) getAppServersFallback(ctx context.Context, namespace string) ([]types.AppServer, error) {
 	legacyServers, err := c.GetAppServers(ctx, namespace)
 	if err != nil {
@@ -1036,7 +1028,7 @@ func (c *Client) DeleteAllApplicationServers(ctx context.Context, namespace stri
 
 // GetAppServers gets all application servers.
 //
-// DELETE IN 9.0. Deprecated, use GetApplicationServers.
+// DELETE IN 11.0.0. Deprecated, use GetApplicationServers.
 func (c *Client) GetAppServers(ctx context.Context, namespace string) ([]types.Server, error) {
 	resp, err := c.grpc.GetAppServers(ctx, &proto.GetAppServersRequest{
 		Namespace: namespace,
@@ -1719,10 +1711,6 @@ func (c *Client) ListNodes(ctx context.Context, req proto.ListNodesRequest) ([]t
 		Labels:       req.Labels,
 	})
 	if err != nil {
-		if trace.IsNotImplemented(err) {
-			return c.listNodesFallback(ctx, req)
-		}
-
 		return nil, "", trace.Wrap(err)
 	}
 
@@ -1737,30 +1725,6 @@ func (c *Client) ListNodes(ctx context.Context, req proto.ListNodesRequest) ([]t
 	}
 
 	return servers, resp.NextKey, nil
-}
-
-// listNodesFallback previous implementation of `ListNodes` function using
-// `ListNodes` RPC call.
-// DELETE IN 10.0
-func (c *Client) listNodesFallback(ctx context.Context, req proto.ListNodesRequest) (nodes []types.Server, nextKey string, err error) {
-	if req.Namespace == "" {
-		return nil, "", trace.BadParameter("missing parameter namespace")
-	}
-	if req.Limit <= 0 {
-		return nil, "", trace.BadParameter("nonpositive parameter limit")
-	}
-
-	resp, err := c.grpc.ListNodes(ctx, &req, c.callOpts...)
-	if err != nil {
-		return nil, "", trail.FromGRPC(err)
-	}
-
-	nodes = make([]types.Server, len(resp.Servers))
-	for i, node := range resp.Servers {
-		nodes[i] = node
-	}
-
-	return nodes, resp.NextKey, nil
 }
 
 // UpsertNode is used by SSH servers to report their presence

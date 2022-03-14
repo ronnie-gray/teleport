@@ -189,19 +189,6 @@ func TestLoadProfile(t *testing.T) {
 		testProfileContents(t, dir, profileName)
 	})
 
-	// DELETE IN 8.0.0
-	t.Run("old profile", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		writeProfile(t, &profile.Profile{
-			WebProxyAddr: profileName + ":3080",
-			SiteName:     "example.com",
-			Username:     "testUser",
-			Dir:          dir,
-		}, true)
-		testProfileContents(t, dir, profileName)
-	})
-
 	t.Run("non existent profile", func(t *testing.T) {
 		t.Parallel()
 		// Load non existent profile.
