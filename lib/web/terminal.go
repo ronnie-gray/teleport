@@ -102,28 +102,12 @@ func NewTerminal(ctx context.Context, req TerminalRequest, authProvider AuthProv
 		return nil, trace.BadParameter("term: bad term dimensions")
 	}
 
-	servers, err := authProvider.GetNodes(ctx, req.Namespace)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	// DELETE IN: 5.0
-	//
-	// All proxies will support lookup by uuid, so host/port lookup
-	// and fallback can be dropped entirely.
-	hostName, hostPort, err := resolveServerHostPort(req.Server, servers)
-	if err != nil {
-		return nil, trace.BadParameter("invalid server name %q: %v", req.Server, err)
-	}
-
 	return &TerminalHandler{
 		log: logrus.WithFields(logrus.Fields{
 			trace.Component: teleport.ComponentWebsocket,
 		}),
 		params:       req,
 		ctx:          sessCtx,
-		hostName:     hostName,
-		hostPort:     hostPort,
 		hostUUID:     req.Server,
 		authProvider: authProvider,
 		encoder:      unicode.UTF8.NewEncoder(),
@@ -388,22 +372,9 @@ func promptMFAChallenge(
 func (t *TerminalHandler) streamTerminal(ws *websocket.Conn, tc *client.TeleportClient) {
 	defer t.terminalCancel()
 
-	// Establish SSH connection to the server. This function will block until
-	// either an error occurs or it completes successfully.
+	t.log.Debugf("Ambiguous hostname %q, attempting to connect by UUID (%q).", t.hostName, t.hostUUID)
+	tc.Host = t.hostUUID
 	err := tc.SSH(t.terminalContext, t.params.InteractiveCommand, false)
-
-	// TODO IN: 5.0
-	//
-	// Make connecting by UUID the default instead of the fallback.
-	//
-	if err != nil && strings.Contains(err.Error(), teleport.NodeIsAmbiguous) {
-		t.log.Debugf("Ambiguous hostname %q, attempting to connect by UUID (%q).", t.hostName, t.hostUUID)
-		tc.Host = t.hostUUID
-		// We don't technically need to zero the HostPort, but future version won't look up
-		// HostPort when connecting by UUID, so its best to keep behavior consistent.
-		tc.HostPort = 0
-		err = tc.SSH(t.terminalContext, t.params.InteractiveCommand, false)
-	}
 
 	if err != nil {
 		t.log.Warnf("Unable to stream terminal: %v.", err)
