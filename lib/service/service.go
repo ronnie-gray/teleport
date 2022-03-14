@@ -2401,10 +2401,6 @@ func (process *TeleportProcess) getAdditionalPrincipals(role types.SystemRole) (
 	case types.RoleAuth, types.RoleAdmin:
 		addrs = process.Config.Auth.PublicAddrs
 	case types.RoleNode:
-		// DELETE IN 5.0: We are manually adding HostUUID here in order
-		// to allow UUID based routing to function with older Auth Servers
-		// which don't automatically add UUID to the principal list.
-		principals = append(principals, process.Config.HostUUID)
 		addrs = process.Config.SSH.PublicAddrs
 		// If advertise IP is set, add it to the list of principals. Otherwise
 		// add in the default (0.0.0.0) which will be replaced by the Auth Server

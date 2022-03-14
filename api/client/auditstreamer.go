@@ -22,6 +22,7 @@ import (
 
 	"github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/api/types/events"
+	"github.com/gravitational/teleport/lib/session"
 
 	"github.com/gravitational/trace"
 	"github.com/gravitational/trace/trail"
@@ -53,21 +54,21 @@ func (c *Client) createOrResumeAuditStream(ctx context.Context, request proto.Au
 }
 
 // ResumeAuditStream resumes existing audit stream.
-func (c *Client) ResumeAuditStream(ctx context.Context, sessionID, uploadID string) (events.Stream, error) {
+func (c *Client) ResumeAuditStream(ctx context.Context, sessionID session.ID, uploadID string) (events.Stream, error) {
 	return c.createOrResumeAuditStream(ctx, proto.AuditStreamRequest{
 		Request: &proto.AuditStreamRequest_ResumeStream{
 			ResumeStream: &proto.ResumeStream{
-				SessionID: sessionID,
+				SessionID: string(sessionID),
 				UploadID:  uploadID,
 			}},
 	})
 }
 
 // CreateAuditStream creates new audit stream.
-func (c *Client) CreateAuditStream(ctx context.Context, sessionID string) (events.Stream, error) {
+func (c *Client) CreateAuditStream(ctx context.Context, sessionID session.ID) (events.Stream, error) {
 	return c.createOrResumeAuditStream(ctx, proto.AuditStreamRequest{
 		Request: &proto.AuditStreamRequest_CreateStream{
-			CreateStream: &proto.CreateStream{SessionID: sessionID}},
+			CreateStream: &proto.CreateStream{SessionID: string(sessionID)}},
 	})
 }
 

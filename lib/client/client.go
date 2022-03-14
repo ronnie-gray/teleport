@@ -296,15 +296,6 @@ func (proxy *ProxyClient) reissueUserCerts(ctx context.Context, cachePolicy Cert
 	case proto.UserCertsRequest_All:
 		key.Cert = certs.SSH
 		key.TLSCert = certs.TLS
-
-		// DELETE IN 7.0
-		// Database certs have to be requested with CertUsage All because
-		// pre-7.0 servers do not accept usage-restricted certificates.
-		if params.RouteToDatabase.ServiceName != "" {
-			key.DBTLSCerts[params.RouteToDatabase.ServiceName] = makeDatabaseClientPEM(
-				params.RouteToDatabase.Protocol, certs.TLS, key.Priv)
-		}
-
 	case proto.UserCertsRequest_SSH:
 		key.Cert = certs.SSH
 	case proto.UserCertsRequest_App:
