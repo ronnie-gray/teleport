@@ -1834,9 +1834,10 @@ func (h *Handler) clusterNodesGet(w http.ResponseWriter, r *http.Request, p http
 	}
 
 	return listResourcesGetResponse{
-		Items:      ui.MakeServers(site.GetName(), servers),
-		StartKey:   resp.NextKey,
-		TotalCount: resp.TotalCount,
+		Items:        ui.MakeServers(site.GetName(), servers),
+		StartKey:     resp.NextKey,
+		TotalCount:   resp.TotalCount,
+		HasResources: resp.HasResources,
 	}, nil
 }
 

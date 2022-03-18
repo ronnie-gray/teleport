@@ -18,6 +18,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"time"
 
@@ -1006,12 +1007,14 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 	}
 
 	var resources []types.ResourceWithLabels
+	hasResources := false
 	switch req.ResourceType {
 	case types.KindNode:
 		nodes, err := a.GetNodes(ctx, req.Namespace)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+		hasResources = len(nodes) > 0
 
 		servers := types.Servers(nodes)
 		if err := servers.SortByCustom(req.SortBy); err != nil {
@@ -1024,6 +1027,7 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+		hasResources = len(appservers) > 0
 
 		servers := types.AppServers(appservers)
 		if err := servers.SortByCustom(req.SortBy); err != nil {
@@ -1036,6 +1040,7 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+		hasResources = len(dbservers) > 0
 
 		servers := types.DatabaseServers(dbservers)
 		if err := servers.SortByCustom(req.SortBy); err != nil {
@@ -1048,6 +1053,7 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+		hasResources = len(kubeservices) > 0
 
 		// Extract kube clusters into its own list.
 		clusters := []types.KubeCluster{}
@@ -1072,6 +1078,7 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
+		hasResources = len(windowsdesktops) > 0
 
 		desktops := types.WindowsDesktops(windowsdesktops)
 		if err := desktops.SortByCustom(req.SortBy); err != nil {
@@ -1088,7 +1095,8 @@ func (a *ServerWithRoles) listResourcesWithSort(ctx context.Context, req proto.L
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-
+	resp.HasResources = hasResources
+	fmt.Println("---------------- DO I HAVE ANY RESOURCES: ", hasResources)
 	return resp, nil
 }
 

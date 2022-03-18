@@ -336,7 +336,8 @@ type listResourcesGetResponse struct {
 	StartKey string `json:"startKey"`
 	// TotalCount is the total count of resources available
 	// after filter.
-	TotalCount int `json:"totalCount"`
+	TotalCount   int  `json:"totalCount"`
+	HasResources bool `json:"hasResources"`
 }
 
 type resourcesAPIGetter interface {

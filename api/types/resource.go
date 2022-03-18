@@ -394,5 +394,6 @@ type ListResourcesResponse struct {
 	// NextKey is the next key to use as a starting point.
 	NextKey string
 	// TotalCount is the total number of resources available as a whole.
-	TotalCount int
+	TotalCount   int
+	HasResources bool
 }

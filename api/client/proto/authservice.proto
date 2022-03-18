@@ -1506,6 +1506,8 @@ message ListResourcesResponse {
     string NextKey = 2 [ (gogoproto.jsontag) = "next_key,omitempty" ];
     // TotalCount is the total number of resources available after filter, if any.
     int32 TotalCount = 3 [ (gogoproto.jsontag) = "total_count,omitempty" ];
+    // TODO
+    bool HasResources = 4 [ (gogoproto.jsontag) = "has_resources,omitempty" ];
 }
 
 // CreateSessionTrackerRequest is a request to create a new session.
